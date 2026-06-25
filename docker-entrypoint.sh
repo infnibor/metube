@@ -10,18 +10,16 @@ echo "Creating download directory (${DOWNLOAD_DIR}), audio download directory ($
 mkdir -p "${DOWNLOAD_DIR}" "${AUDIO_DOWNLOAD_DIR}" "${STATE_DIR}" "${TEMP_DIR}"
 
 do_upgrade() {
-    echo "Upgrading yt-dlp to nightly channel..."
-    if ! python3 -m pip --version >/dev/null 2>&1; then
-        echo "pip not found; attempting ensurepip"
-        python3 -m ensurepip --upgrade >/dev/null 2>&1 || true
-    fi
-    if ! python3 -m pip install -U --pre "yt-dlp[default,curl-cffi,deno]"; then
-        echo "Warning: yt-dlp nightly upgrade failed; continuing with existing installation"
-        return 1
-    fi
-    echo "yt-dlp nightly upgrade complete"
-    return 0
+    echo "Installing yt-dlp SABR fork (forced)..."
+
+    python3 -m pip install -U --no-cache-dir --force-reinstall \
+        "yt-dlp[default,curl-cffi,deno] @ git+https://github.com/coletdjnz/yt-dlp-dev@feat/youtube/sabr"
+
+    echo "yt-dlp SABR installed"
 }
+
+echo "Forcing yt-dlp SABR build on startup..."
+do_upgrade || true
 
 run_supervised() {
     while true; do
