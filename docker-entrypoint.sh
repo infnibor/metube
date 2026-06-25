@@ -12,13 +12,12 @@ echo "Creating directories"
 mkdir -p "${DOWNLOAD_DIR}" "${AUDIO_DOWNLOAD_DIR}" "${STATE_DIR}" "${TEMP_DIR}"
 
 export PYTHONNOUSERSITE=1
-export PATH="/usr/local/bin:$PATH"
+export PATH="/usr/local/bin:/usr/bin:/bin"
 
 clean_ytdlp() {
     echo "Cleaning old yt-dlp..."
 
     python3 -m pip uninstall -y yt-dlp || true
-
     rm -f /usr/local/bin/yt-dlp || true
     rm -rf /usr/local/lib/python3.13/site-packages/yt_dlp* || true
 }
@@ -27,18 +26,17 @@ install_sabr() {
     echo "Installing SABR fork..."
 
     python3 -m pip install --no-cache-dir --force-reinstall \
-        --no-deps \
         "git+https://github.com/coletdjnz/yt-dlp-dev@feat/youtube/sabr"
 }
 
 verify() {
-    echo "yt-dlp binary:"
-    which yt-dlp || true
+    echo "binary:"
+    command -v yt-dlp || true
 
-    echo "yt-dlp version:"
+    echo "version:"
     yt-dlp --version || true
 
-    echo "yt-dlp python source:"
+    echo "python module:"
     python3 -c "import yt_dlp; print(yt_dlp.__file__)"
 }
 
@@ -61,7 +59,7 @@ run_supervised() {
         trap - TERM INT
 
         if [ "$code" -eq 42 ]; then
-            echo "Restart request -> reinstall SABR"
+            echo "Restart requested -> reinstall SABR"
             force_sabr || true
             continue
         fi
@@ -76,7 +74,7 @@ nightly_enabled() {
 
 disable_nightly_for_non_root() {
     if nightly_enabled; then
-        echo "Disabling nightly updates (non-root)"
+        echo "Disabling nightly updates"
         unset YTDL_NIGHTLY_UPDATE_TIME
     fi
 }
