@@ -87,11 +87,11 @@ if [ "$(id -u)" -eq 0 ] && [ "$(id -g)" -eq 0 ]; then
     chown -R "${PUID}:${PGID}" /app "${DOWNLOAD_DIR}" "${AUDIO_DOWNLOAD_DIR}" "${STATE_DIR}" "${TEMP_DIR}" || true
 
     echo "Starting BgUtils POT Provider"
-    gosu "${PUID}:${PGID}" bgutil-pot server >/tmp/bgutil-pot.log 2>&1 &
-
+    bgutil-pot server >/tmp/bgutil-pot.log 2>&1 &
+    
     echo "Starting MeTube"
-    run_supervised gosu "${PUID}:${PGID}" python3 app/main.py
-
+    run_supervised python3 app/main.py
+    
 else
     disable_nightly_for_non_root
 
