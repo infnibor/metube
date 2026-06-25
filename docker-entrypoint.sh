@@ -1,81 +1,104 @@
 #!/bin/sh
+set -eu
 
 PUID="${UID:-$PUID}"
 PGID="${GID:-$PGID}"
 AUDIO_DOWNLOAD_DIR="${AUDIO_DOWNLOAD_DIR:-$DOWNLOAD_DIR}"
 
 echo "Setting umask to ${UMASK}"
-umask ${UMASK}
-echo "Creating download directory (${DOWNLOAD_DIR}), audio download directory (${AUDIO_DOWNLOAD_DIR}), state directory (${STATE_DIR}), and temp dir (${TEMP_DIR})"
+umask "${UMASK}"
+
+echo "Creating directories"
 mkdir -p "${DOWNLOAD_DIR}" "${AUDIO_DOWNLOAD_DIR}" "${STATE_DIR}" "${TEMP_DIR}"
 
-do_upgrade() {
-    hash -r
+export PYTHONNOUSERSITE=1
+export PATH="/usr/local/bin:$PATH"
 
-    echo "Removing old yt-dlp..."
+clean_ytdlp() {
+    echo "Cleaning old yt-dlp..."
+
     python3 -m pip uninstall -y yt-dlp || true
 
-    echo "Installing SABR fork..."
-    python3 -m pip install -U --no-cache-dir --force-reinstall \
-        "git+https://github.com/coletdjnz/yt-dlp-dev@feat/youtube/sabr"
-
-    echo "Checking version:"
-    yt-dlp --version || true
+    rm -f /usr/local/bin/yt-dlp || true
+    rm -rf /usr/local/lib/python3.13/site-packages/yt_dlp* || true
 }
 
-echo "Ensuring SABR yt-dlp..."
-do_upgrade || true
+install_sabr() {
+    echo "Installing SABR fork..."
+
+    python3 -m pip install --no-cache-dir --force-reinstall \
+        --no-deps \
+        "git+https://github.com/coletdjnz/yt-dlp-dev@feat/youtube/sabr"
+}
+
+verify() {
+    echo "yt-dlp binary:"
+    which yt-dlp || true
+
+    echo "yt-dlp version:"
+    yt-dlp --version || true
+
+    echo "yt-dlp python source:"
+    python3 -c "import yt_dlp; print(yt_dlp.__file__)"
+}
+
+force_sabr() {
+    clean_ytdlp
+    install_sabr
+    hash -r
+    verify
+}
 
 run_supervised() {
     while true; do
         "$@" &
-        child_pid=$!
-        trap 'kill -TERM "$child_pid" 2>/dev/null; wait "$child_pid" 2>/dev/null' TERM INT
-        wait "$child_pid"
-        exit_code=$?
+        pid=$!
+
+        trap 'kill -TERM "$pid" 2>/dev/null; wait "$pid" 2>/dev/null' TERM INT
+        wait "$pid"
+        code=$?
+
         trap - TERM INT
-        if [ "$exit_code" -eq 42 ]; then
-            echo "MeTube requested yt-dlp update restart (exit 42)"
-            do_upgrade || true
+
+        if [ "$code" -eq 42 ]; then
+            echo "Restart request -> reinstall SABR"
+            force_sabr || true
             continue
         fi
-        return "$exit_code"
+
+        return "$code"
     done
 }
 
 nightly_enabled() {
-    [ -n "${YTDL_NIGHTLY_UPDATE_TIME}" ]
+    [ -n "${YTDL_NIGHTLY_UPDATE_TIME:-}" ]
 }
 
 disable_nightly_for_non_root() {
     if nightly_enabled; then
-        echo "YTDL_NIGHTLY_UPDATE_TIME is set but this container runs as a non-root user; nightly yt-dlp updates are not supported. Ignoring YTDL_NIGHTLY_UPDATE_TIME."
+        echo "Disabling nightly updates (non-root)"
         unset YTDL_NIGHTLY_UPDATE_TIME
     fi
 }
 
-if [ `id -u` -eq 0 ] && [ `id -g` -eq 0 ]; then
-    if [ "${PUID}" -eq 0 ]; then
-        echo "Warning: it is not recommended to run as root user, please check your setting of the PUID/PGID (or legacy UID/GID) environment variables"
-    fi
-    if [ "${CHOWN_DIRS:-true}" != "false" ]; then
-        echo "Changing ownership of download and state directories to ${PUID}:${PGID}"
-        chown -R "${PUID}":"${PGID}" /app "${DOWNLOAD_DIR}" "${AUDIO_DOWNLOAD_DIR}" "${STATE_DIR}" "${TEMP_DIR}"
-    fi
-    if nightly_enabled; then
-        echo "YTDL_NIGHTLY_UPDATE_TIME is set to ${YTDL_NIGHTLY_UPDATE_TIME}; upgrading yt-dlp on startup"
-        do_upgrade || true
-    fi
+echo "Forcing SABR yt-dlp on startup..."
+force_sabr || true
+
+if [ "$(id -u)" -eq 0 ] && [ "$(id -g)" -eq 0 ]; then
+
+    chown -R "${PUID}:${PGID}" /app "${DOWNLOAD_DIR}" "${AUDIO_DOWNLOAD_DIR}" "${STATE_DIR}" "${TEMP_DIR}" || true
+
     echo "Starting BgUtils POT Provider"
-    gosu "${PUID}":"${PGID}" bgutil-pot server >/tmp/bgutil-pot.log 2>&1 &
-    echo "Running MeTube as user ${PUID}:${PGID}"
-    run_supervised gosu "${PUID}":"${PGID}" python3 app/main.py
-    exit $?
+    gosu "${PUID}:${PGID}" bgutil-pot server >/tmp/bgutil-pot.log 2>&1 &
+
+    echo "Starting MeTube"
+    run_supervised gosu "${PUID}:${PGID}" python3 app/main.py
+
 else
-    echo "User set by docker; running MeTube as `id -u`:`id -g`"
     disable_nightly_for_non_root
+
     echo "Starting BgUtils POT Provider"
     bgutil-pot server >/tmp/bgutil-pot.log 2>&1 &
+
     run_supervised python3 app/main.py
-    exit $?
 fi
