@@ -27,6 +27,7 @@ RUN sed -i 's/\r$//g' docker-entrypoint.sh && \
       curl \
       tini \
       git \
+      gosu \
       build-essential && \
     curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh && \
     UV_PROJECT_ENVIRONMENT=/usr/local uv sync --frozen --no-dev --compile-bytecode && \
