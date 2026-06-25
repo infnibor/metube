@@ -10,6 +10,8 @@ echo "Creating download directory (${DOWNLOAD_DIR}), audio download directory ($
 mkdir -p "${DOWNLOAD_DIR}" "${AUDIO_DOWNLOAD_DIR}" "${STATE_DIR}" "${TEMP_DIR}"
 
 do_upgrade() {
+    hash -r
+
     echo "Removing old yt-dlp..."
     python3 -m pip uninstall -y yt-dlp || true
 
@@ -17,19 +19,12 @@ do_upgrade() {
     python3 -m pip install -U --no-cache-dir --force-reinstall \
         "git+https://github.com/coletdjnz/yt-dlp-dev@feat/youtube/sabr"
 
-    echo "Cleaning old executables if any..."
-    YT_DLP_PATH="$(which yt-dlp 2>/dev/null || true)"
-    if [ -n "$YT_DLP_PATH" ]; then
-        rm -f "$YT_DLP_PATH" || true
-    fi
-
     echo "Checking version:"
     yt-dlp --version || true
 }
 
-if ! yt-dlp --version 2>/dev/null | grep -q "2026"; then
-    do_upgrade
-fi
+echo "Ensuring SABR yt-dlp..."
+do_upgrade || true
 
 run_supervised() {
     while true; do
